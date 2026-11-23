@@ -1,0 +1,36 @@
+spring:
+  application:
+    name: local-rag-assistant
+  main:
+    web-application-type: none
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/vector_db}
+    username: ${DB_USER:postgres_user}
+    password: ${DB_PASSWORD:postgres_password}
+  ai:
+    ollama:
+      base-url: ${OLLAMA_URL:http://localhost:11434}
+      init:
+        pull-model-strategy: when_missing
+      chat:
+        options:
+          model: ${CHAT_MODEL:llama3.1:8b}   # lighter option: llama3.2:3b
+          temperature: 0.1
+      embedding:
+        model: nomic-embed-text
+    vectorstore:
+      pgvector:
+        initialize-schema: true
+        table-name: vector_store
+  docker:
+    compose:
+      file: src/main/docker/compose.yml
+
+rag:
+  document-path: ${RAG_DOCUMENT:file:./documents/book.txt}
+  system-prompt: >-
+    You are a helpful assistant. You answer questions about the provided
+    material (a book or a software project) using only that material.
+  chunk-size: 400      # approximate tokens per chunk
+  top-k: 5             # chunks sent to the model per question
+  similarity-threshold: 0.0
