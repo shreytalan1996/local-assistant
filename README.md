@@ -1,4 +1,4 @@
-# Local RAG Assistant
+# Local Assistant
 
 Ask questions about **a book or your own codebase**, using AI that runs **entirely on your machine**.
 No API keys, no cloud, no per-question cost. Built with Spring Boot, Spring AI, Ollama and PGVector.
@@ -78,7 +78,7 @@ Retrieval tuning (`rag.chunk-size`, `rag.top-k`, `rag.similarity-threshold`) is 
 
 | Class | Role |
 |---|---|
-| `LocalRagApplication` | Spring Boot entry point |
+| `LocalAssistantApplication` | Spring Boot entry point |
 | `config/RagProperties` | Typed `rag.*` settings |
 | `config/ChatClientConfig` | ChatClient with memory + retrieval advisors |
 | `service/DocumentIngestionService` | Read -> split -> embed -> store (book and project modes) |
@@ -113,7 +113,3 @@ Run the tests with `./mvnw test`.
 - REST endpoint and small web chat UI
 - Show retrieved sources next to each answer
 - Re-index only changed files
-
-## Credits
-
-Inspired by [Zenika/spring-ai-RAG-demo](https://github.com/Zenika/spring-ai-RAG-demo).

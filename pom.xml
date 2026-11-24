@@ -9,9 +9,9 @@
         <relativePath/> <!-- lookup parent from repository -->
     </parent>
     <groupId>com.localrag</groupId>
-    <artifactId>local-rag-assistant</artifactId>
+    <artifactId>local-assistant</artifactId>
     <version>0.0.1</version>
-    <name>local-rag-assistant</name>
+    <name>local-assistant</name>
     <description>Chat with your PDFs locally using Spring AI, Ollama and PGVector</description>
     <properties>
         <java.version>21</java.version>

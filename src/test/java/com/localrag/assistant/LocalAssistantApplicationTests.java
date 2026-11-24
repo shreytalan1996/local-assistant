@@ -7,7 +7,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 // Needs Ollama and PostgreSQL running, so it is disabled by default.
 @Disabled("Requires Ollama + PGVector")
 @SpringBootTest
-class LocalRagApplicationTests {
+class LocalAssistantApplicationTests {
 
     @Test
     void contextLoads() {

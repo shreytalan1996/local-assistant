@@ -11,9 +11,9 @@ import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
  */
 @SpringBootApplication
 @ConfigurationPropertiesScan
-public class LocalRagApplication {
+public class LocalAssistantApplication {
 
     public static void main(String[] args) {
-        SpringApplication.run(LocalRagApplication.class, args);
+        SpringApplication.run(LocalAssistantApplication.class, args);
     }
 }
