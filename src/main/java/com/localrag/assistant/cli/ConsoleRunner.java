@@ -15,13 +15,13 @@ import com.localrag.assistant.service.AssistantService;
 import com.localrag.assistant.service.DocumentIngestionService;
 
 /**
- * Console front-end. Optional start-up flags (all can be combined):
+ * Console front-end. Optional start-up flags:
  * <ul>
- *   <li>{@code --reset} - clear the vector store first</li>
- *   <li>{@code --fillVectorStore} - index the book from {@code rag.document-path}</li>
- *   <li>{@code --ingestProject=<folder>} - index a software project</li>
+ *   <li>{@code --ingestProject=<folder>} - understand a software project (replaces the current index)</li>
+ *   <li>{@code --fillVectorStore} - index the book at {@code rag.document-path} (replaces the current index)</li>
+ *   <li>{@code --reset} - just clear the index</li>
  * </ul>
- * After that, it loops on user questions until the user types "exit".
+ * Then it loops on questions. Type {@code /overview} to see the project overview, {@code exit} to quit.
  */
 @Component
 public class ConsoleRunner implements ApplicationRunner {
@@ -44,36 +44,43 @@ public class ConsoleRunner implements ApplicationRunner {
 
     @Override
     public void run(ApplicationArguments args) throws IOException {
-        boolean indexed = false;
+        List<String> projects = args.getOptionValues(PROJECT_FLAG);
+        boolean book = args.containsOption(BOOK_FLAG);
+
+        if (book && projects != null || projects != null && projects.size() > 1) {
+            System.err.println("Index one source at a time: use either --fillVectorStore or a single --ingestProject=<folder>.");
+            return;
+        }
 
         if (args.containsOption(RESET_FLAG)) {
             ingestionService.reset();
-            System.out.println("Vector store cleared.");
+            System.out.println("Index cleared.");
         }
-        if (args.containsOption(BOOK_FLAG)) {
+        if (book) {
             System.out.println("Indexing book...");
             System.out.println("Done: " + ingestionService.ingestBook() + " chunks indexed.");
-            indexed = true;
-        }
-        List<String> projects = args.getOptionValues(PROJECT_FLAG);
-        if (projects != null) {
-            for (String folder : projects) {
-                System.out.println("Indexing project " + folder + " ...");
-                System.out.println("Done: " + ingestionService.ingestProject(Path.of(folder)) + " chunks indexed.");
-                indexed = true;
-            }
-        }
-        if (!indexed) {
-            System.out.println("Nothing new indexed. Use --fillVectorStore (book) or --ingestProject=<folder> (code).");
+        } else if (projects != null) {
+            System.out.println("Reading project " + projects.get(0) + " ...");
+            System.out.println("Done: " + ingestionService.ingestProject(Path.of(projects.get(0))) + " chunks indexed.");
+            printOverview();
+        } else {
+            System.out.println("Using the existing index. (Index something with --ingestProject=<folder> or --fillVectorStore.)");
         }
 
         chatLoop();
     }
 
+    private void printOverview() {
+        String overview = assistantService.overview();
+        if (!overview.isBlank()) {
+            System.out.println("\n===== Project overview =====\n" + overview + "\n============================");
+        }
+    }
+
     private void chatLoop() {
         try (Scanner scanner = new Scanner(System.in)) {
             while (true) {
-                System.out.print("\nAsk a question (or 'exit'): ");
+                System.out.print("\nAsk a question (/overview, exit): ");
                 if (!scanner.hasNextLine()) {
                     return;
                 }
@@ -85,6 +92,10 @@ public class ConsoleRunner implements ApplicationRunner {
                 if (question.equalsIgnoreCase("exit")) {
                     SpringApplication.exit(context);
                     return;
+                }
+                if (question.equalsIgnoreCase("/overview")) {
+                    printOverview();
+                    continue;
                 }
                 answer(question);
             }

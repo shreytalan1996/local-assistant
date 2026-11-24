@@ -23,10 +23,19 @@ Question -> embed -> closest chunks -> prompt -> Llama 3.1 -> answer
 
 | Mode | Index with | Example question |
 |---|---|---|
+| **Java project** (any folder path) | `--ingestProject=<folder>` | "What does this project do?" / "Which class handles streaming answers?" |
 | **Book** (`.pdf` / `.txt`) | `--fillVectorStore` | "Who are the main characters?" |
-| **Codebase** (a project folder) | `--ingestProject=<folder>` | "Which class handles streaming answers?" |
 
-In codebase mode, answers name the file they came from.
+Only **one source is active at a time**. Indexing something new replaces the previous index.
+
+### How it understands a Java project
+
+Searching code chunks is good for details but cannot answer "what is this project?". So for a project, indexing also builds:
+
+- **A short summary per Java file** (package, classes, Spring role such as Service or RestController, entry point, public methods). These are searched along with the code, so "which class handles X?" finds the right file.
+- **A project overview** (build tool, key dependencies, entry points, components by role, main packages, README start). It is sent to the model with every question, so broad questions work. Test classes are left out of the overview.
+
+Answers name the files they came from. Type `/overview` in the chat to see the overview.
 
 ## Requirements
 
@@ -42,11 +51,11 @@ In codebase mode, answers name the file they came from.
 ollama pull llama3.1:8b
 ollama pull nomic-embed-text
 
-# 2a. Book mode: put a .txt or .pdf at documents/book.txt, then
-./mvnw spring-boot:run -Dspring-boot.run.arguments="--reset --fillVectorStore"
+# 2a. Understand a Java project: give it the folder path
+./mvnw spring-boot:run -Dspring-boot.run.arguments="--ingestProject=/path/to/project"
 
-# 2b. Codebase mode: point it at any project folder
-./mvnw spring-boot:run -Dspring-boot.run.arguments="--reset --ingestProject=/path/to/project"
+# 2b. Or a book: put a .txt or .pdf at documents/book.txt, then
+./mvnw spring-boot:run -Dspring-boot.run.arguments="--fillVectorStore"
 
 # Later runs (already indexed): just chat
 ./mvnw spring-boot:run
@@ -57,9 +66,11 @@ Type `exit` to quit.
 
 | Flag | Meaning |
 |---|---|
-| `--reset` | Clear the database first. Use it when switching to different material, otherwise old and new content get mixed. |
-| `--fillVectorStore` | Index the book at `rag.document-path` |
-| `--ingestProject=<folder>` | Index source, docs and config files of a project (skips `target`, `.git`, `node_modules`, large and binary files) |
+| `--ingestProject=<folder>` | Understand a project: indexes source, docs and config files (skips `target`, `.git`, `node_modules`, large and binary files), builds summaries and the overview. Replaces the current index. |
+| `--fillVectorStore` | Index the book at `rag.document-path`. Replaces the current index. |
+| `--reset` | Just clear the index and overview |
+
+In the chat: `/overview` shows the project overview, `exit` quits. Indexing a large project takes a while, because every chunk is embedded by the local model.
 
 ## Configuration
 
@@ -83,6 +94,9 @@ Retrieval tuning (`rag.chunk-size`, `rag.top-k`, `rag.similarity-threshold`) is 
 | `config/ChatClientConfig` | ChatClient with memory + retrieval advisors |
 | `service/DocumentIngestionService` | Read -> split -> embed -> store (book and project modes) |
 | `service/ProjectFilePolicy` | Which project files are worth indexing |
+| `service/JavaSourceSummary` | Short description of one Java file (package, types, Spring role, methods) |
+| `service/ProjectOverviewBuilder` | Builds the project overview |
+| `service/OverviewStore` | Saves the overview to `.local-assistant/overview.txt` |
 | `service/AssistantService` | Asks the model (streaming or full answer) |
 | `cli/ConsoleRunner` | Start-up flags and the console loop |
 | `resources/prompts/rag-prompt.st` | The RAG prompt |
@@ -90,6 +104,9 @@ Retrieval tuning (`rag.chunk-size`, `rag.top-k`, `rag.similarity-threshold`) is 
 Run the tests with `./mvnw test`.
 
 ## Limits (be aware)
+
+- Deep understanding is built for **Java** projects. Other file types are indexed as plain text without summaries.
+- Java summaries use simple pattern matching, so they are approximate (for example, interface methods without a modifier are not listed).
 
 - A local 8B model is weaker than large cloud models. Good for "where is X?" and "what does this do?",
   weaker for deep reasoning or tricky debugging.
@@ -110,6 +127,9 @@ Run the tests with `./mvnw test`.
 
 ## Roadmap
 
-- REST endpoint and small web chat UI
+- Summaries for more languages (Python, TypeScript, Go)
+- Clone a GitHub URL directly (`--repo=<url>`)
+- One separate index per project
 - Show retrieved sources next to each answer
 - Re-index only changed files
+- REST endpoint and small web chat UI

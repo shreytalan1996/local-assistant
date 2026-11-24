@@ -34,3 +34,4 @@ rag:
   chunk-size: 400      # approximate tokens per chunk
   top-k: 5             # chunks sent to the model per question
   similarity-threshold: 0.0
+  overview-path: .local-assistant/overview.txt   # project overview generated while indexing

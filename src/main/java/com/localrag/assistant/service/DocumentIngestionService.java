@@ -46,11 +46,13 @@ public class DocumentIngestionService {
     private final VectorStore vectorStore;
     private final JdbcTemplate jdbcTemplate;
     private final RagProperties properties;
+    private final OverviewStore overviewStore;
     private final String tableName;
 
     public DocumentIngestionService(VectorStore vectorStore,
                                     JdbcTemplate jdbcTemplate,
                                     RagProperties properties,
+                                    OverviewStore overviewStore,
                                     @Value("${spring.ai.vectorstore.pgvector.table-name:vector_store}") String tableName) {
         if (!SAFE_TABLE_NAME.matcher(tableName).matches()) {
             throw new IllegalArgumentException("Invalid vector table name: " + tableName);
@@ -58,15 +60,17 @@ public class DocumentIngestionService {
         this.vectorStore = vectorStore;
         this.jdbcTemplate = jdbcTemplate;
         this.properties = properties;
+        this.overviewStore = overviewStore;
         this.tableName = tableName;
     }
 
     // ------------------------------------------------------------------ book mode
 
-    /** Indexes the configured book. Returns the number of chunks saved. */
+    /** Replaces the index with the configured book. Returns the number of chunks saved. */
     public int ingestBook() {
         String path = properties.documentPath();
         log.info("Reading book: {}", path);
+        reset();
 
         List<Document> documents = path.toLowerCase().endsWith(".txt") ? readText(path) : readPdf(path);
         List<Document> chunks = splitter().split(documents);
@@ -80,7 +84,11 @@ public class DocumentIngestionService {
 
     // ------------------------------------------------------------------ project mode
 
-    /** Indexes the source files of a project folder. Returns the number of chunks saved. */
+    /**
+     * Replaces the index with a software project. For every Java file it stores a short summary plus the
+     * content chunks, and it saves a project overview that is used for broad questions.
+     * Returns the number of chunks saved.
+     */
     public int ingestProject(Path root) throws IOException {
         Path base = root.toAbsolutePath().normalize();
         if (!Files.isDirectory(base)) {
@@ -92,14 +100,45 @@ public class DocumentIngestionService {
         try (Stream<Path> walk = Files.walk(base)) {
             walk.filter(Files::isRegularFile)
                     .filter(p -> isIndexable(base, p))
+                    .sorted()
                     .forEach(files::add);
         }
+        if (files.isEmpty()) {
+            throw new IllegalStateException("No indexable files found in " + base);
+        }
+
+        reset();
 
         TokenTextSplitter splitter = splitter();
         List<Document> chunks = new ArrayList<>();
+        List<String> paths = new ArrayList<>();
+        List<JavaSourceSummary> javaSummaries = new ArrayList<>();
+        String pomXml = null;
+        String readme = null;
+
         for (Path file : files) {
             String relative = base.relativize(file).toString().replace('\\', '/');
-            String text = Files.readString(file);
+            String text;
+            try {
+                text = Files.readString(file);
+            } catch (IOException e) {
+                log.warn("Skipping {} (not readable as UTF-8 text)", relative);
+                continue;
+            }
+            paths.add(relative);
+
+            if (relative.equals("pom.xml")) {
+                pomXml = text;
+            } else if (relative.equalsIgnoreCase("README.md")) {
+                readme = text;
+            }
+
+            if (relative.endsWith(".java")) {
+                JavaSourceSummary summary = JavaSourceSummary.of(relative, text);
+                javaSummaries.add(summary);
+                chunks.add(new Document(summary.toText(), Map.of("file", relative, "kind", "summary")));
+            }
+
             for (Document chunk : splitter.split(List.of(new Document(text, Map.of("file", relative))))) {
                 // The model only sees chunk text, not metadata, so the file name is written into the text
                 chunks.add(new Document("File: " + relative + "\n" + chunk.getText(), chunk.getMetadata()));
@@ -107,7 +146,11 @@ public class DocumentIngestionService {
         }
 
         vectorStore.add(chunks);
-        log.info("Stored {} chunks from {} files", chunks.size(), files.size());
+
+        String projectName = base.getFileName() == null ? "project" : base.getFileName().toString();
+        overviewStore.save(ProjectOverviewBuilder.build(projectName, paths, javaSummaries, pomXml, readme));
+
+        log.info("Stored {} chunks from {} files ({} Java)", chunks.size(), paths.size(), javaSummaries.size());
         return chunks.size();
     }
 
@@ -124,6 +167,7 @@ public class DocumentIngestionService {
     /** Deletes everything from the vector store (use before indexing something different). */
     public void reset() {
         jdbcTemplate.execute("TRUNCATE TABLE " + tableName);
+        overviewStore.clear();
         log.info("Vector store cleared");
     }
 
