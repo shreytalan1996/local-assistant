@@ -17,7 +17,8 @@ public final class ProjectFilePolicy {
             "java", "kt", "md", "yml", "yaml", "xml", "properties", "st", "gradle", "sql");
 
     private static final Set<String> SKIPPED_DIRECTORIES = Set.of(
-            "target", "build", "node_modules", ".git", ".idea", ".vscode", ".mvn", "documents");
+            "target", "build", "node_modules", ".git", ".idea", ".vscode", ".mvn", "documents",
+            ".local-assistant", ".repo-assistant");   // the app's own state, written inside the folder when it indexes itself
 
     private ProjectFilePolicy() {
     }

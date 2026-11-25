@@ -14,6 +14,7 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
  * @param overviewPath        file where the generated project overview is stored
  * @param indexTests          whether test sources (src/test) are indexed too
  * @param embedParallelism    how many embedding requests are sent to the local model at the same time
+ * @param quickIndex          faster, shallower indexing: Java files as summaries only, other files first part only
  */
 @ConfigurationProperties(prefix = "rag")
 public record RagProperties(
@@ -24,5 +25,6 @@ public record RagProperties(
         @DefaultValue("0.0") double similarityThreshold,
         @DefaultValue(".local-assistant/overview.txt") String overviewPath,
         @DefaultValue("false") boolean indexTests,
-        @DefaultValue("3") int embedParallelism) {
+        @DefaultValue("3") int embedParallelism,
+        @DefaultValue("false") boolean quickIndex) {
 }

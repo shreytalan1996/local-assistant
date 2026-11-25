@@ -25,6 +25,13 @@ class ProjectFilePolicyTest {
     }
 
     @Test
+    void ignoresTheAppsOwnStateSoIndexingItselfStaysUpToDate() {
+        // index-state.properties is rewritten after every run; if it counted, the project would look changed each time
+        assertThat(ProjectFilePolicy.isIndexable(Path.of(".local-assistant/index-state.properties"), 100)).isFalse();
+        assertThat(ProjectFilePolicy.isIndexable(Path.of(".local-assistant/overview.md"), 100)).isFalse();
+    }
+
+    @Test
     void ignoresUnknownTypesAndSecrets() {
         assertThat(ProjectFilePolicy.isIndexable(Path.of("photo.png"), 1_000)).isFalse();
         assertThat(ProjectFilePolicy.isIndexable(Path.of(".env"), 100)).isFalse();

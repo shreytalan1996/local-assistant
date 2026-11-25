@@ -37,6 +37,7 @@ rag:
   overview-path: .local-assistant/overview.txt   # project overview generated while indexing
   index-tests: false     # also index src/test (slower, rarely useful for understanding a project)
   embed-parallelism: 3   # embedding requests sent to the local model at the same time
+  quick-index: false     # true = Java files as summaries only: about 3x faster, but less detail in answers
 
 logging:
   level:

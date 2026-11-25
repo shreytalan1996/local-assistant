@@ -10,3 +10,6 @@ HELP.md
 # Your own documents (can be large or private) - only the folder is tracked
 documents/*
 !documents/.gitkeep
+
+# Generated project overview
+.local-assistant/

@@ -155,6 +155,9 @@ public class DocumentIngestionService {
         }
 
         reset();
+        if (properties.quickIndex()) {
+            log.info("Quick index: Java files are indexed as summaries, other files by their first part only.");
+        }
 
         TokenTextSplitter splitter = splitter();
         List<Document> chunks = new ArrayList<>();
@@ -180,13 +183,20 @@ public class DocumentIngestionService {
                 readme = text;
             }
 
-            if (relative.endsWith(".java")) {
+            boolean isJava = relative.endsWith(".java");
+            if (isJava) {
                 JavaSourceSummary summary = JavaSourceSummary.of(relative, text);
                 javaSummaries.add(summary);
                 chunks.add(new Document(summary.toText(), Map.of("file", relative, "kind", "summary")));
             }
 
-            for (Document chunk : splitter.split(List.of(new Document(text, Map.of("file", relative))))) {
+            List<Document> pieces = splitter.split(List.of(new Document(text, Map.of("file", relative))));
+            if (properties.quickIndex()) {
+                // Quick mode: a Java file is represented by its summary alone, any other file by its first part
+                pieces = isJava ? List.of() : pieces.stream().limit(1).toList();
+            }
+
+            for (Document chunk : pieces) {
                 // The model only sees chunk text, not metadata, so the file name is written into the text
                 chunks.add(new Document("File: " + relative + "\n" + chunk.getText(), chunk.getMetadata()));
             }
@@ -224,7 +234,7 @@ public class DocumentIngestionService {
 
     /** Settings that change what gets indexed. A different value means the old index is not valid anymore. */
     private String settingsKey() {
-        return "chunk=" + properties.chunkSize() + ";tests=" + properties.indexTests();
+        return "chunk=" + properties.chunkSize() + ";tests=" + properties.indexTests() + ";quick=" + properties.quickIndex();
     }
 
     private boolean canSkip(String source, String fingerprint, boolean needsOverview) {
