@@ -54,9 +54,10 @@ public final class ProjectOverviewBuilder {
 
         StringBuilder sb = new StringBuilder();
         sb.append("Project: ").append(projectName).append('\n');
+        int testFiles = javaSummaries.size() - mainJava.size();
         sb.append("Indexed files: ").append(paths.size())
-                .append(" (").append(javaSummaries.size()).append(" Java, ")
-                .append(javaSummaries.size() - mainJava.size()).append(" of them tests)\n");
+                .append(" (").append(javaSummaries.size()).append(" Java")
+                .append(testFiles > 0 ? ", " + testFiles + " of them tests" : "").append(")\n");
 
         appendBuild(sb, paths, pomXml);
         appendEntryPoints(sb, mainJava);

@@ -41,4 +41,20 @@ class ProjectFilePolicyTest {
     void extensionCheckIsCaseInsensitive() {
         assertThat(ProjectFilePolicy.isIndexable(Path.of("Notes.MD"), 100)).isTrue();
     }
+
+    @Test
+    void leavesOutTestSourcesUnlessAsked() {
+        Path test = Path.of("src/test/java/AppTest.java");
+        Path moduleTest = Path.of("orders/src/test/java/OrderTest.java");
+
+        assertThat(ProjectFilePolicy.isIndexable(test, 1_000)).isFalse();
+        assertThat(ProjectFilePolicy.isIndexable(moduleTest, 1_000)).isFalse();
+        assertThat(ProjectFilePolicy.isIndexable(test, 1_000, true)).isTrue();
+        assertThat(ProjectFilePolicy.isIndexable(moduleTest, 1_000, true)).isTrue();
+    }
+
+    @Test
+    void aFolderNamedTestInsideMainIsStillIndexed() {
+        assertThat(ProjectFilePolicy.isIndexable(Path.of("src/main/java/test/Helper.java"), 1_000)).isTrue();
+    }
 }

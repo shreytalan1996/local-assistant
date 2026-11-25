@@ -12,6 +12,8 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
  * @param topK                how many matching chunks are sent to the model with each question
  * @param similarityThreshold minimum similarity (0.0 - 1.0) for a chunk to be used; 0 accepts everything
  * @param overviewPath        file where the generated project overview is stored
+ * @param indexTests          whether test sources (src/test) are indexed too
+ * @param embedParallelism    how many embedding requests are sent to the local model at the same time
  */
 @ConfigurationProperties(prefix = "rag")
 public record RagProperties(
@@ -20,5 +22,7 @@ public record RagProperties(
         @DefaultValue("400") int chunkSize,
         @DefaultValue("5") int topK,
         @DefaultValue("0.0") double similarityThreshold,
-        @DefaultValue(".local-assistant/overview.txt") String overviewPath) {
+        @DefaultValue(".local-assistant/overview.txt") String overviewPath,
+        @DefaultValue("false") boolean indexTests,
+        @DefaultValue("3") int embedParallelism) {
 }

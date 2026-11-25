@@ -19,6 +19,7 @@ import com.localrag.assistant.service.DocumentIngestionService;
  * <ul>
  *   <li>{@code --ingestProject=<folder>} - understand a software project (replaces the current index)</li>
  *   <li>{@code --fillVectorStore} - index the book at {@code rag.document-path} (replaces the current index)</li>
+ *   <li>{@code --reindex} - index again even if the source has not changed</li>
  *   <li>{@code --reset} - just clear the index</li>
  * </ul>
  * Then it loops on questions. Type {@code /overview} to see the project overview, {@code exit} to quit.
@@ -27,6 +28,7 @@ import com.localrag.assistant.service.DocumentIngestionService;
 public class ConsoleRunner implements ApplicationRunner {
 
     private static final String RESET_FLAG = "reset";
+    private static final String REINDEX_FLAG = "reindex";
     private static final String BOOK_FLAG = "fillVectorStore";
     private static final String PROJECT_FLAG = "ingestProject";
 
@@ -46,6 +48,7 @@ public class ConsoleRunner implements ApplicationRunner {
     public void run(ApplicationArguments args) throws IOException {
         List<String> projects = args.getOptionValues(PROJECT_FLAG);
         boolean book = args.containsOption(BOOK_FLAG);
+        boolean reindex = args.containsOption(REINDEX_FLAG);
 
         if (book && projects != null || projects != null && projects.size() > 1) {
             System.err.println("Index one source at a time: use either --fillVectorStore or a single --ingestProject=<folder>.");
@@ -57,17 +60,25 @@ public class ConsoleRunner implements ApplicationRunner {
             System.out.println("Index cleared.");
         }
         if (book) {
-            System.out.println("Indexing book...");
-            System.out.println("Done: " + ingestionService.ingestBook() + " chunks indexed.");
+            System.out.println("Checking book...");
+            report(ingestionService.ingestBook(reindex));
         } else if (projects != null) {
-            System.out.println("Reading project " + projects.get(0) + " ...");
-            System.out.println("Done: " + ingestionService.ingestProject(Path.of(projects.get(0))) + " chunks indexed.");
+            System.out.println("Checking project " + projects.get(0) + " ...");
+            report(ingestionService.ingestProject(Path.of(projects.get(0)), reindex));
             printOverview();
         } else {
             System.out.println("Using the existing index. (Index something with --ingestProject=<folder> or --fillVectorStore.)");
         }
 
         chatLoop();
+    }
+
+    private void report(DocumentIngestionService.IngestionResult result) {
+        if (result.skipped()) {
+            System.out.println("Nothing changed since the last run, so the existing index is used. (Add --reindex to index again.)");
+        } else {
+            System.out.println("Done: " + result.chunks() + " chunks indexed.");
+        }
     }
 
     private void printOverview() {

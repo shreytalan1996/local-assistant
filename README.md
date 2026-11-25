@@ -68,9 +68,10 @@ Type `exit` to quit.
 |---|---|
 | `--ingestProject=<folder>` | Understand a project: indexes source, docs and config files (skips `target`, `.git`, `node_modules`, large and binary files), builds summaries and the overview. Replaces the current index. |
 | `--fillVectorStore` | Index the book at `rag.document-path`. Replaces the current index. |
+| `--reindex` | Index again even if nothing changed. Without it, an unchanged project or book is **not** re-indexed, so starting again takes seconds. |
 | `--reset` | Just clear the index and overview |
 
-In the chat: `/overview` shows the project overview, `exit` quits. Indexing a large project takes a while, because every chunk is embedded by the local model.
+In the chat: `/overview` shows the project overview, `exit` quits. The first indexing of a large project takes a few minutes, because every chunk is embedded by the local model. The app remembers what it indexed (file names, sizes and modification times), so the next start on an unchanged project skips that step.
 
 ## Configuration
 
@@ -83,7 +84,12 @@ Defaults live in `src/main/resources/application.yml`. Override with environment
 | `OLLAMA_URL` | `http://localhost:11434` |
 | `DB_URL` / `DB_USER` / `DB_PASSWORD` | local Docker defaults |
 
-Retrieval tuning (`rag.chunk-size`, `rag.top-k`, `rag.similarity-threshold`) is in the same file.
+Retrieval tuning (`rag.chunk-size`, `rag.top-k`, `rag.similarity-threshold`) is in the same file. Two settings affect indexing speed:
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `rag.index-tests` | `false` | Also index `src/test`. Leaving tests out means fewer chunks and a faster first run. |
+| `rag.embed-parallelism` | `3` | Embedding requests sent to Ollama at the same time. Lower it to 1 if your Mac struggles. |
 
 ## Project structure
 
@@ -97,6 +103,7 @@ Retrieval tuning (`rag.chunk-size`, `rag.top-k`, `rag.similarity-threshold`) is 
 | `service/JavaSourceSummary` | Short description of one Java file (package, types, Spring role, methods) |
 | `service/ProjectOverviewBuilder` | Builds the project overview |
 | `service/OverviewStore` | Saves the overview to `.local-assistant/overview.txt` |
+| `service/IndexState` | Remembers what was indexed, so unchanged projects are not indexed again |
 | `service/AssistantService` | Asks the model (streaming or full answer) |
 | `cli/ConsoleRunner` | Start-up flags and the console loop |
 | `resources/prompts/rag-prompt.st` | The RAG prompt |
