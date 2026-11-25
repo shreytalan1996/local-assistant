@@ -19,37 +19,7 @@ Source -> read -> split -> embed (nomic-embed-text) -> PGVector
 Question -> embed -> closest chunks -> prompt -> Llama 3.1 -> answer
 ```
 
-## Two engines: classic RAG and fast hybrid
-
-The same question can be answered two ways. Both are RAG, they differ in how the relevant code is found.
-
-| | **Classic RAG** (Spring AI + PGVector) | **Fast hybrid** (`./fast`) |
-|---|---|---|
-| Finds code by | meaning only (embeddings in PostgreSQL) | keywords **and** meaning, combined |
-| Ready to ask | after every chunk is embedded (minutes) | in about 2 seconds, meaning search fills in behind |
-| Embeddings stored in | PGVector (Docker) | a cache file in `~/.repo-assistant/cache`, one per repo |
-| Re-run on same repo | skipped if unchanged | instant, only changed files are embedded again |
-| Needs | Docker, PostgreSQL, Spring Boot | Java 21 and Ollama only |
-| Best for | showing the textbook pipeline: embed, store, retrieve, generate | daily use on any repo |
-
-```
-Fast hybrid:   question --+--> keyword ranking (BM25, in memory, instant) ---+
-                          |                                                 +--> merge --> top code --> local LLM --> answer
-                          +--> embed question --> compare with cached vectors +
-```
-
-```bash
-ollama pull llama3.2:3b && ollama pull nomic-embed-text
-./fast /path/to/any/repo                 # chat; vectors are prepared in the background
-./fast /path/to/any/repo --prepare       # embed everything once (do this before a demo), then exit
-./fast /path/to/any/repo --ask "where is login handled?"
-./fast /path/to/any/repo --no-vectors    # keyword search only
-```
-In the chat: `/status` shows how much is ready for search by meaning, `/search words` shows matching code without the model, `/sources`, `/overview`, `/clear`, `exit`. In VS Code use the run configuration **Fast hybrid: ask about a folder**.
-
-The two engines are separate programs in one project, so you can demo the slow, classic pipeline first and then the fast one on the same repo.
-
-## Two modes (classic RAG)
+## Two modes
 
 | Mode | Index with | Example question |
 |---|---|---|
@@ -137,10 +107,6 @@ Retrieval tuning (`rag.chunk-size`, `rag.top-k`, `rag.similarity-threshold`) is 
 | `service/IndexState` | Remembers what was indexed, so unchanged projects are not indexed again |
 | `service/AssistantService` | Asks the model (streaming or full answer) |
 | `cli/ConsoleRunner` | Start-up flags and the console loop |
-| `fast/Main` | Entry point of the fast hybrid engine (no Spring) |
-| `fast/RepoIndex`, `fast/Bm25Index` | Keyword index in memory, merged with the vector results |
-| `fast/VectorIndex`, `fast/VectorCache` | Search by meaning: background embedding and the on-disk cache |
-| `fast/OllamaClient`, `fast/Assistant` | Talks to Ollama (chat and embeddings) and builds the prompt |
 | `resources/prompts/rag-prompt.st` | The RAG prompt |
 
 Run the tests with `./mvnw test`.
