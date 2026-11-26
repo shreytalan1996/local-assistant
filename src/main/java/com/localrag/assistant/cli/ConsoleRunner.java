@@ -3,6 +3,7 @@ package com.localrag.assistant.cli;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Optional;
 import java.util.Scanner;
 
 import org.springframework.boot.ApplicationArguments;
@@ -17,10 +18,10 @@ import com.localrag.assistant.service.DocumentIngestionService;
 /**
  * Console front-end. Optional start-up flags:
  * <ul>
- *   <li>{@code --ingestProject=<folder>} - understand a software project (replaces the current index)</li>
- *   <li>{@code --fillVectorStore} - index the book at {@code rag.document-path} (replaces the current index)</li>
+ *   <li>{@code --ingestProject=<folder>} - understand a software project (saved index is reused when unchanged)</li>
+ *   <li>{@code --fillVectorStore} - index the book at {@code rag.document-path} (saved index is reused when unchanged)</li>
  *   <li>{@code --reindex} - index again even if the source has not changed</li>
- *   <li>{@code --reset} - just clear the index</li>
+ *   <li>{@code --reset} - delete the saved index of the source used last</li>
  * </ul>
  * Then it loops on questions. Type {@code /overview} to see the project overview, {@code exit} to quit.
  */
@@ -56,8 +57,9 @@ public class ConsoleRunner implements ApplicationRunner {
         }
 
         if (args.containsOption(RESET_FLAG)) {
+            ingestionService.openLast();
             ingestionService.reset();
-            System.out.println("Index cleared.");
+            System.out.println("Saved index cleared.");
         }
         if (book) {
             System.out.println("Checking book...");
@@ -67,7 +69,13 @@ public class ConsoleRunner implements ApplicationRunner {
             report(ingestionService.ingestProject(Path.of(projects.get(0)), reindex));
             printOverview();
         } else {
-            System.out.println("Using the existing index. (Index something with --ingestProject=<folder> or --fillVectorStore.)");
+            Optional<Path> last = ingestionService.openLast();
+            if (last.isPresent()) {
+                System.out.println("Loaded the saved index from " + last.get() + ". No indexing needed.");
+                printOverview();
+            } else {
+                System.out.println("Nothing indexed yet. Start with --ingestProject=<folder> or --fillVectorStore.");
+            }
         }
 
         chatLoop();
@@ -75,7 +83,7 @@ public class ConsoleRunner implements ApplicationRunner {
 
     private void report(DocumentIngestionService.IngestionResult result) {
         if (result.skipped()) {
-            System.out.println("Nothing changed since the last run, so the existing index is used. (Add --reindex to index again.)");
+            System.out.println("Nothing changed since the last run, so the saved index was loaded from disk. (Add --reindex to index again.)");
         } else {
             System.out.println("Done: " + result.chunks() + " chunks indexed.");
         }

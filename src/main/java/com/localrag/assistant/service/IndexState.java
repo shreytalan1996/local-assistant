@@ -14,6 +14,7 @@ import java.util.Collections;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Properties;
+import java.util.function.Supplier;
 
 /**
  * Remembers what is currently in the vector store (which source, and a fingerprint of it), so that
@@ -21,10 +22,15 @@ import java.util.Properties;
  */
 public class IndexState {
 
-    private final Path file;
+    private final Supplier<Path> location;
 
     public IndexState(Path file) {
-        this.file = file;
+        this(() -> file);
+    }
+
+    /** The file can change while the app runs (a new source was chosen); null means "no source yet". */
+    public IndexState(Supplier<Path> location) {
+        this.location = location;
     }
 
     /** True when the saved state was written for this exact source and fingerprint. */
@@ -34,6 +40,10 @@ public class IndexState {
     }
 
     public void save(String source, String fingerprint) {
+        Path file = location.get();
+        if (file == null) {
+            throw new IllegalStateException("No source has been chosen yet");
+        }
         Properties props = new Properties();
         props.setProperty("source", source);
         props.setProperty("fingerprint", fingerprint);
@@ -50,6 +60,10 @@ public class IndexState {
     }
 
     public void clear() {
+        Path file = location.get();
+        if (file == null) {
+            return;
+        }
         try {
             Files.deleteIfExists(file);
         } catch (IOException e) {
@@ -59,7 +73,8 @@ public class IndexState {
 
     private Properties read() {
         Properties props = new Properties();
-        if (Files.exists(file)) {
+        Path file = location.get();
+        if (file != null && Files.exists(file)) {
             try (InputStream in = Files.newInputStream(file)) {
                 props.load(in);
             } catch (IOException e) {

@@ -10,8 +10,8 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 import org.slf4j.Logger;
@@ -21,11 +21,8 @@ import org.springframework.ai.reader.TextReader;
 import org.springframework.ai.reader.pdf.PagePdfDocumentReader;
 import org.springframework.ai.reader.pdf.ParagraphPdfDocumentReader;
 import org.springframework.ai.transformer.splitter.TokenTextSplitter;
-import org.springframework.ai.vectorstore.VectorStore;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.DefaultResourceLoader;
 import org.springframework.core.io.Resource;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
 import com.localrag.assistant.config.RagProperties;
@@ -39,8 +36,9 @@ import com.localrag.assistant.config.RagProperties;
  *   <li>a software project folder (source code, docs and config files)</li>
  * </ul>
  *
- * <p>Indexing is the slow part (every chunk goes through the local embedding model). To keep start-up fast,
- * the service remembers a fingerprint of what it indexed and skips the work when nothing has changed.
+ * <p>Indexing is the slow part (every chunk goes through the local embedding model). So the result is saved
+ * to disk, in a workspace folder for that source ({@link IndexWorkspace}). On the next start the saved index is
+ * loaded from the file, and when the fingerprint says nothing changed, no chunking or embedding happens at all.
  */
 @Service
 public class DocumentIngestionService {
@@ -63,36 +61,38 @@ public class DocumentIngestionService {
     private static final String GUTENBERG_END = "*** END OF";
 
     private static final int EMBED_BATCH_SIZE = 25;
-    private static final Pattern SAFE_TABLE_NAME = Pattern.compile("[A-Za-z_][A-Za-z0-9_]*");
 
-    private final VectorStore vectorStore;
-    private final JdbcTemplate jdbcTemplate;
+    private final WorkspaceVectorStore vectorStore;
+    private final IndexWorkspace workspace;
     private final RagProperties properties;
     private final OverviewStore overviewStore;
     private final IndexState indexState;
-    private final String tableName;
 
-    public DocumentIngestionService(VectorStore vectorStore,
-                                    JdbcTemplate jdbcTemplate,
+    public DocumentIngestionService(WorkspaceVectorStore vectorStore,
+                                    IndexWorkspace workspace,
                                     RagProperties properties,
                                     OverviewStore overviewStore,
-                                    IndexState indexState,
-                                    @Value("${spring.ai.vectorstore.pgvector.table-name:vector_store}") String tableName) {
-        if (!SAFE_TABLE_NAME.matcher(tableName).matches()) {
-            throw new IllegalArgumentException("Invalid vector table name: " + tableName);
-        }
+                                    IndexState indexState) {
         this.vectorStore = vectorStore;
-        this.jdbcTemplate = jdbcTemplate;
+        this.workspace = workspace;
         this.properties = properties;
         this.overviewStore = overviewStore;
         this.indexState = indexState;
-        this.tableName = tableName;
+    }
+
+    // ------------------------------------------------------------------ reuse what was saved last time
+
+    /** Loads the index saved for the source used last time (no embedding). Empty when there is none. */
+    public Optional<Path> openLast() {
+        Optional<Path> last = workspace.useLast();
+        last.ifPresent(dir -> vectorStore.open(workspace.vectorFile()));
+        return last;
     }
 
     // ------------------------------------------------------------------ book mode
 
     /**
-     * Replaces the index with the configured book, unless that book is already indexed and unchanged.
+     * Indexes the configured book, unless it was already indexed and saved, and has not changed.
      *
      * @param force index again even if nothing changed
      */
@@ -100,6 +100,7 @@ public class DocumentIngestionService {
         String path = properties.documentPath();
         String source = "book:" + path;
         String fingerprint = bookFingerprint(path);
+        workspace.use(workspace.forBook(path));
 
         if (!force && canSkip(source, fingerprint, false)) {
             log.info("Book already indexed and unchanged, skipping. Use --reindex to force.");
@@ -107,14 +108,15 @@ public class DocumentIngestionService {
         }
 
         log.info("Reading book: {}", path);
-        reset();
+        clearWorkspace();
 
         List<Document> documents = path.toLowerCase().endsWith(".txt") ? readText(path) : readPdf(path);
         List<Document> chunks = splitter().split(documents);
         addInBatches(chunks);
 
+        vectorStore.save(workspace.vectorFile());
         if (fingerprint != null) {
-            indexState.save(source, fingerprint);
+            indexState.save(source, fingerprint);   // written last: it marks the saved index as complete
         }
         log.info("Stored {} chunks (from {} sections)", chunks.size(), documents.size());
         return IngestionResult.indexed(chunks.size());
@@ -123,9 +125,9 @@ public class DocumentIngestionService {
     // ------------------------------------------------------------------ project mode
 
     /**
-     * Replaces the index with a software project, unless that project is already indexed and unchanged.
+     * Indexes a software project, unless it was already indexed and saved, and has not changed.
      * For every Java file it stores a short summary plus the content chunks, and it saves a project
-     * overview that is used for broad questions.
+     * overview (overview.md) that is used for broad questions, and a readable list of file summaries (files.md).
      *
      * @param force index again even if nothing changed
      */
@@ -149,12 +151,13 @@ public class DocumentIngestionService {
 
         String source = "project:" + base;
         String fingerprint = IndexState.fingerprint(base, files, settingsKey());
+        workspace.use(workspace.forProject(base));
         if (!force && canSkip(source, fingerprint, true)) {
             log.info("Project already indexed and unchanged ({} files), skipping. Use --reindex to force.", files.size());
             return IngestionResult.upToDate();
         }
 
-        reset();
+        clearWorkspace();
         if (properties.quickIndex()) {
             log.info("Quick index: Java files are indexed as summaries, other files by their first part only.");
         }
@@ -205,8 +208,10 @@ public class DocumentIngestionService {
         addInBatches(chunks);
 
         String projectName = base.getFileName() == null ? "project" : base.getFileName().toString();
+        vectorStore.save(workspace.vectorFile());
         overviewStore.save(ProjectOverviewBuilder.build(projectName, paths, javaSummaries, pomXml, readme));
-        indexState.save(source, fingerprint);
+        writeFileSummaries(projectName, javaSummaries);
+        indexState.save(source, fingerprint);   // written last: it marks the saved index as complete
 
         log.info("Stored {} chunks from {} files ({} Java)", chunks.size(), paths.size(), javaSummaries.size());
         return IngestionResult.indexed(chunks.size());
@@ -222,12 +227,39 @@ public class DocumentIngestionService {
 
     // ------------------------------------------------------------------ maintenance
 
-    /** Deletes everything from the vector store (use before indexing something different). */
+    /** Deletes the saved index of the active source (the next start will index it again). */
     public void reset() {
-        jdbcTemplate.execute("TRUNCATE TABLE " + tableName);
+        if (!workspace.hasCurrent()) {
+            return;
+        }
+        clearWorkspace();
+        log.info("Saved index cleared");
+    }
+
+    private void clearWorkspace() {
+        vectorStore.clear();
+        try {
+            Files.deleteIfExists(workspace.vectorFile());
+            Files.deleteIfExists(workspace.filesFile());
+        } catch (IOException e) {
+            throw new IllegalStateException("Cannot clear " + workspace.vectorFile().getParent(), e);
+        }
         overviewStore.clear();
         indexState.clear();
-        log.info("Vector store cleared");
+    }
+
+    /** A readable list of what every Java file does. For people to read, it is not sent to the model. */
+    private void writeFileSummaries(String projectName, List<JavaSourceSummary> summaries) {
+        StringBuilder sb = new StringBuilder("# Java files in ").append(projectName).append("\n\n");
+        sb.append("Generated by Local Assistant. One entry per Java file.\n");
+        for (JavaSourceSummary summary : summaries) {
+            sb.append("\n## ").append(summary.path()).append("\n\n").append(summary.toText()).append('\n');
+        }
+        try {
+            Files.writeString(workspace.filesFile(), sb.toString());
+        } catch (IOException e) {
+            log.warn("Could not write {}: {}", workspace.filesFile(), e.getMessage());
+        }
     }
 
     // ------------------------------------------------------------------ skipping unchanged sources
@@ -241,9 +273,10 @@ public class DocumentIngestionService {
         if (fingerprint == null || !indexState.isCurrent(source, fingerprint)) {
             return false;
         }
-        Long stored = jdbcTemplate.queryForObject("SELECT count(*) FROM " + tableName, Long.class);
-        boolean hasData = stored != null && stored > 0;
-        return hasData && (!needsOverview || !overviewStore.load().isBlank());
+        if (needsOverview && overviewStore.load().isBlank()) {
+            return false;
+        }
+        return vectorStore.open(workspace.vectorFile());   // loads the saved chunks and embeddings from the file
     }
 
     private String bookFingerprint(String path) {

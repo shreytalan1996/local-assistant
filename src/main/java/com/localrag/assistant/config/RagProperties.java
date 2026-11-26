@@ -11,7 +11,9 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
  * @param chunkSize           approximate chunk size (in tokens) used when splitting text
  * @param topK                how many matching chunks are sent to the model with each question
  * @param similarityThreshold minimum similarity (0.0 - 1.0) for a chunk to be used; 0 accepts everything
- * @param overviewPath        file where the generated project overview is stored
+ * @param workspaceRoot       folder where the saved indexes are kept, one sub-folder per project or book
+ * @param storeInProject      true = a project's saved index goes into that project's own {@code .local-assistant}
+ *                            folder; false = it goes under {@code workspaceRoot}, so the project is never written to
  * @param indexTests          whether test sources (src/test) are indexed too
  * @param embedParallelism    how many embedding requests are sent to the local model at the same time
  * @param quickIndex          faster, shallower indexing: Java files as summaries only, other files first part only
@@ -23,7 +25,8 @@ public record RagProperties(
         @DefaultValue("400") int chunkSize,
         @DefaultValue("5") int topK,
         @DefaultValue("0.0") double similarityThreshold,
-        @DefaultValue(".local-assistant/overview.txt") String overviewPath,
+        @DefaultValue("indexes") String workspaceRoot,
+        @DefaultValue("false") boolean storeInProject,
         @DefaultValue("false") boolean indexTests,
         @DefaultValue("3") int embedParallelism,
         @DefaultValue("false") boolean quickIndex) {

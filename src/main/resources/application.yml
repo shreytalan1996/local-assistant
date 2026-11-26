@@ -3,10 +3,6 @@ spring:
     name: local-assistant
   main:
     web-application-type: none
-  datasource:
-    url: ${DB_URL:jdbc:postgresql://localhost:5432/vector_db}
-    username: ${DB_USER:postgres_user}
-    password: ${DB_PASSWORD:postgres_password}
   ai:
     ollama:
       base-url: ${OLLAMA_URL:http://localhost:11434}
@@ -18,13 +14,6 @@ spring:
           temperature: 0.1
       embedding:
         model: nomic-embed-text
-    vectorstore:
-      pgvector:
-        initialize-schema: true
-        table-name: vector_store
-  docker:
-    compose:
-      file: src/main/docker/compose.yml
 
 rag:
   document-path: ${RAG_DOCUMENT:file:./documents/book.txt}
@@ -34,7 +23,8 @@ rag:
   chunk-size: 400      # approximate tokens per chunk
   top-k: 5             # chunks sent to the model per question
   similarity-threshold: 0.0
-  overview-path: .local-assistant/overview.txt   # project overview generated while indexing
+  workspace-root: indexes      # saved indexes: indexes/<project-or-book>-<id>/ (next to where you run the app)
+  store-in-project: false      # false = the indexed project is never written to; true = save in <project>/.local-assistant
   index-tests: false     # also index src/test (slower, rarely useful for understanding a project)
   embed-parallelism: 3   # embedding requests sent to the local model at the same time
   quick-index: false     # true = Java files as summaries only: about 3x faster, but less detail in answers
@@ -42,4 +32,5 @@ rag:
 logging:
   level:
     org.springframework.ai.transformer.splitter.TextSplitter: WARN   # one line per file is too noisy
+    org.springframework.ai.vectorstore.SimpleVectorStore: WARN      # logs one line per chunk while embedding
     io.netty.resolver.dns: OFF                                       # harmless macOS DNS warning

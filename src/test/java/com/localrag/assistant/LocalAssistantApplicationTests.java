@@ -4,8 +4,8 @@ import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 
-// Needs Ollama and PostgreSQL running, so it is disabled by default.
-@Disabled("Requires Ollama + PGVector")
+// Needs Ollama running, so it is disabled by default.
+@Disabled("Requires Ollama")
 @SpringBootTest
 class LocalAssistantApplicationTests {
 
